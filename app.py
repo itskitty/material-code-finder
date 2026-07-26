@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from rapidfuzz import process, fuzz
 import pdfplumber
+import io
 
 # Page Setup
 st.set_page_config(page_title="Material Code Finder", page_icon="🔍", layout="wide")
@@ -42,7 +43,7 @@ try:
             st.dataframe(pd.DataFrame(results), use_container_width=True)
 
     # -------------------------------------------------------------
-    # TAB 2: Batch List Search (Multiple lines pasted)
+    # TAB 2: Batch List Search
     # -------------------------------------------------------------
     with tab2:
         st.subheader("Batch Material Matcher")
@@ -69,12 +70,11 @@ try:
                 res_df = pd.DataFrame(batch_results)
                 st.dataframe(res_df, use_container_width=True)
                 
-                # Download Button
                 csv_data = res_df.to_csv(index=False).encode('utf-8')
                 st.download_button("📥 Download Results (CSV)", csv_data, "matched_materials.csv", "text/csv")
 
     # -------------------------------------------------------------
-    # TAB 3: PDF File Upload (Powered by pdfplumber)
+    # TAB 3: PDF File Upload (Fixed Byte Reader)
     # -------------------------------------------------------------
     with tab3:
         st.subheader("PDF BOQ Processing")
@@ -83,16 +83,26 @@ try:
         if uploaded_pdf is not None:
             pdf_lines = []
             
-            # Extract text using pdfplumber
-            with pdfplumber.open(uploaded_pdf) as pdf:
+            # Read PDF bytes directly using getvalue() to avoid Streamlit buffer EOF
+            pdf_bytes = io.BytesIO(uploaded_pdf.getvalue())
+            
+            with pdfplumber.open(pdf_bytes) as pdf:
                 for page in pdf.pages:
+                    # Method A: Extract raw text
                     text = page.extract_text()
                     if text:
                         for line in text.split("\n"):
                             clean_line = line.strip()
-                            # Filter out very short noise lines
                             if len(clean_line) > 3:
                                 pdf_lines.append(clean_line)
+                    
+                    # Method B: Extract table cell text (fallback for structured PDF forms)
+                    tables = page.extract_tables()
+                    for table in tables:
+                        for row in table:
+                            row_text = " ".join([str(cell).strip() for cell in row if cell and str(cell).strip()])
+                            if len(row_text) > 5 and row_text not in pdf_lines:
+                                pdf_lines.append(row_text)
             
             st.info(f"Successfully extracted {len(pdf_lines)} text lines from PDF.")
             
@@ -102,7 +112,7 @@ try:
                     match = process.extractOne(line, po_names, scorer=fuzz.token_set_ratio)
                     if match:
                         best_match, score, idx = match
-                        # Filter to relevant matches (score > 40%)
+                        # Filter to relevant matches (Match Score > 40%)
                         if score > 40:
                             row = df.iloc[idx]
                             pdf_results.append({
@@ -116,7 +126,6 @@ try:
                 res_pdf_df = pd.DataFrame(pdf_results)
                 st.dataframe(res_pdf_df, use_container_width=True)
                 
-                # Download Button
                 csv_pdf = res_pdf_df.to_csv(index=False).encode('utf-8')
                 st.download_button("📥 Download PDF Matches (CSV)", csv_pdf, "pdf_matched_materials.csv", "text/csv")
 
