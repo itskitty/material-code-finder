@@ -9,7 +9,7 @@ st.write("Type any product description or specification to quickly find the Prod
 
 # 1. Replace with your actual Google Sheet ID
 SHEET_ID = "YOUR_SHEET_ID_HERE"
-URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
+URL = f"https://docs.google.com/spreadsheets/d/1fChLWdhv385Zt0dyVVVixz7esTrMxQYePc3ugvsIPgg/export?format=csv"
 
 # Cache data for 10 minutes for fast performance
 @st.cache_data(ttl=600)
