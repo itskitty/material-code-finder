@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from rapidfuzz import process, fuzz
-from pypdf import PdfReader
+import pdfplumber
 
 # Page Setup
 st.set_page_config(page_title="Material Code Finder", page_icon="🔍", layout="wide")
@@ -9,8 +9,8 @@ st.title("🔍 Material Code Finder")
 st.write("Find product codes individually, paste batch material lists, or process PDF BOQ files.")
 
 # 1. Google Sheet Setup
-SHEET_ID = "YOUR_SHEET_ID_HERE"
-URL = f"https://docs.google.com/spreadsheets/d/1fChLWdhv385Zt0dyVVVixz7esTrMxQYePc3ugvsIPgg/export?format=csv"
+SHEET_ID = "1fChLWdhv385Zt0dyVVVixz7esTrMxQYePc3ugvsIPgg"
+URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv"
 
 @st.cache_data(ttl=600)
 def load_data():
@@ -74,33 +74,35 @@ try:
                 st.download_button("📥 Download Results (CSV)", csv_data, "matched_materials.csv", "text/csv")
 
     # -------------------------------------------------------------
-    # TAB 3: PDF File Upload
+    # TAB 3: PDF File Upload (Powered by pdfplumber)
     # -------------------------------------------------------------
     with tab3:
         st.subheader("PDF BOQ Processing")
         uploaded_pdf = st.file_uploader("Upload a PDF file (BOQ, Purchase Order, or Spec Sheet):", type=["pdf"])
         
         if uploaded_pdf is not None:
-            # Extract text lines from PDF
-            reader = PdfReader(uploaded_pdf)
             pdf_lines = []
-            for page in reader.pages:
-                text = page.extract_text()
-                if text:
-                    for line in text.split("\n"):
-                        clean_line = line.strip()
-                        if len(clean_line) > 3:  # ignore empty/short lines
-                            pdf_lines.append(clean_line)
+            
+            # Extract text using pdfplumber
+            with pdfplumber.open(uploaded_pdf) as pdf:
+                for page in pdf.pages:
+                    text = page.extract_text()
+                    if text:
+                        for line in text.split("\n"):
+                            clean_line = line.strip()
+                            # Filter out very short noise lines
+                            if len(clean_line) > 3:
+                                pdf_lines.append(clean_line)
             
             st.info(f"Successfully extracted {len(pdf_lines)} text lines from PDF.")
             
-            if st.button("Match PDF Lines to Material Codes"):
+            if pdf_lines and st.button("Match PDF Lines to Material Codes"):
                 pdf_results = []
                 for line in pdf_lines:
                     match = process.extractOne(line, po_names, scorer=fuzz.token_set_ratio)
                     if match:
                         best_match, score, idx = match
-                        # Only show high-confidence matches (score > 40%)
+                        # Filter to relevant matches (score > 40%)
                         if score > 40:
                             row = df.iloc[idx]
                             pdf_results.append({
